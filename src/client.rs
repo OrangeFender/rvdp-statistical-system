@@ -1,6 +1,7 @@
 extern crate robust_verifiable_dp as dp;
 
 use dp::public_parameters::PublicParameters;
+use dp::client::Client;
 use std::net::SocketAddr;
 use serde::{Serialize, Deserialize};
 
@@ -19,7 +20,7 @@ struct SocketAddresses {
 }
 
 
-pub fn client(imputs:Vec<bool> ){
+pub fn client(inputs:Vec<bool> ,id:usize){
     // Create public parameters
     let conf_str=r#"
     {
@@ -58,6 +59,12 @@ let addres = r#"
         }
     }
 
+    //检查input长度
+    if inputs.len() != types {
+        println!("Error: input length does not match the number of types");
+        return;
+    }
+
     let v: serde_json::Value = serde_json::from_str(addres).unwrap();
     let mut socket_addresses = Vec::new();
 
@@ -71,6 +78,14 @@ let addres = r#"
         }
     }
 
+    //创建Client实例
+    let mut client_type:Vec<Client> = Vec::new();
+    for i in 0..types {
+        client_type.push(Client::new(id, inputs[i], &pp, ));
+    }
+
+    //发送commitments
+    
     
     
 }
