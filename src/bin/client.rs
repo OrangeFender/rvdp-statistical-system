@@ -90,3 +90,7 @@ let addres = r#"
     
 }
 
+fn main(){
+    let inputs = vec![true, false, true, false, true, false, true, false, true, false, true, false, true, false, true];
+    client(inputs, 1);
+}
