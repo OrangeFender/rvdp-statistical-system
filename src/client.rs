@@ -1,8 +1,9 @@
 extern crate robust_verifiable_dp as dp;
 
 use dp::public_parameters::PublicParameters;
-
+use std::net::SocketAddr;
 use serde::{Serialize, Deserialize};
+
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Config{
@@ -57,6 +58,20 @@ let addres = r#"
         }
     }
 
+    let v: serde_json::Value = serde_json::from_str(addres).unwrap();
+    let mut socket_addresses = Vec::new();
+
+    if let Some(ip_addresses) = v["ip_addresses"].as_array() {
+        for ip in ip_addresses {
+            if let Some(ip_str) = ip.as_str() {
+                if let Ok(socket_addr) = ip_str.parse::<SocketAddr>() {
+                    socket_addresses.push(socket_addr);
+                }
+            }
+        }
+    }
+
+    
     
 }
 
