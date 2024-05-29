@@ -1,47 +1,18 @@
 extern crate robust_verifiable_dp as dp;
+extern crate rvdp_statistical_system as dpsys;
 
 use dp::public_parameters::PublicParameters;
 use dp::client::Client;
 use std::net::SocketAddr;
 use serde::{Serialize, Deserialize};
+use dpsys::shared::structs::{Config, SocketAddresses};
 
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Config{
-    pub types: usize,
-    pub n_b: usize,
-    pub num_provers: usize,
-    pub threshold: usize,
-    pub seed: String,
-}
-
-struct SocketAddresses {
-    addresses: Vec<String>,
-}
 
 
-pub fn client(inputs:Vec<bool> ,id:usize){
-    // Create public parameters
-    let conf_str=r#"
-    {
-        “types":15,
-        "n_b": 10,
-        "num_provers": 10,
-        "threshold": 4,
-        "seed": "seed1001",
-    }
-"#;
+pub fn client(conf_str:&str,address:&str,inputs:Vec<bool> ,id:usize){
 
-let addres = r#"
-{
-    "ip_addresses": [
-        "192.168.0.1:1234",
-        "192.168.0.2:1234",
-        "10.0.0.1:1234",
-        "172.16.0.1:1234"
-    ]
-}
-"#;
+
 
     let mut pp:PublicParameters;
     let types:usize;
@@ -65,7 +36,7 @@ let addres = r#"
         return;
     }
 
-    let v: serde_json::Value = serde_json::from_str(addres).unwrap();
+    let v: serde_json::Value = serde_json::from_str(address).unwrap();
     let mut socket_addresses = Vec::new();
 
     if let Some(ip_addresses) = v["ip_addresses"].as_array() {
@@ -91,6 +62,28 @@ let addres = r#"
 }
 
 fn main(){
+    let conf_str=r#"
+    {
+        “types":15,
+        "n_b": 10,
+        "num_provers": 10,
+        "threshold": 4,
+        "seed": "seed1001",
+    }
+"#;
+
+    let address = r#"
+{
+    "ip_addresses": [
+        "192.168.0.1:1234",
+        "192.168.0.2:1234",
+        "10.0.0.1:1234",
+        "172.16.0.1:1234"
+    ]
+}
+"#;
     let inputs = vec![true, false, true, false, true, false, true, false, true, false, true, false, true, false, true];
-    client(inputs, 1);
+    client(&conf_str,&address,inputs, 1);
+
+
 }
