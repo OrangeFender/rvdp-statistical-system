@@ -14,3 +14,8 @@ pub struct SocketAddresses {
     addresses: Vec<String>,
 }
 
+
+#[derive(Serialize, Deserialize)]
+struct PublicKeyWrapper {
+    public_key: Vec<u8>,
+}
