@@ -13,7 +13,7 @@ use tokio::sync::{mpsc, RwLock};
 
 
 
-pub async fn client(conf_str:&str,address:&str,pks:&[u8],inputs:Vec<bool> ,id:usize){
+pub async fn client(conf_str:&str,address:&str,pks:&[u8],inputs:Vec<bool> ,id:u64){
     let mut pp:PublicParameters;
     let types:usize;
     //从json中生成公共参数
@@ -100,7 +100,7 @@ pub async fn client(conf_str:&str,address:&str,pks:&[u8],inputs:Vec<bool> ,id:us
     }
 // 向verifier发送transcripts
     let mut buffer = Vec::new();
-    let bytes= bcs::to_bytes(&transcripts).expect("Failed to serialize transcripts");
+    let bytes= bcs::to_bytes(&transcripts.clone()).expect("Failed to serialize transcripts");
     buffer.extend_from_slice(&bytes);
     let mut stream = TcpStream::connect(socket_addresses[0]).await.expect("Failed to connect to verifier");
     stream.write_all(&buffer).await.expect("Failed to send transcripts");
@@ -133,9 +133,9 @@ async fn connect_and_communicate(addr: SocketAddr, data: Vec<u8>, sigs: &mut Vec
     let read_result = timeout(Duration::from_secs(15), stream.read(&mut buffer)).await;
     
     match read_result {
-        Ok(Ok(_)) => {
+        Ok(Ok(bytes_read)) => {
             // Deserialize the received data
-            let sigs_received: Vec<Ed25519Signature> = bcs::from_bytes(&buffer).expect("Failed to deserialize data");
+            let sigs_received: Vec<Ed25519Signature> = bcs::from_bytes(&buffer[..bytes_read]).expect("Failed to deserialize data");
             for i in 0..type_num {
                 sigs[i] = Some(sigs_received[i].clone());
             }

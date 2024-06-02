@@ -24,15 +24,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hashmap: SharedMap = Arc::new(RwLock::new(HashMap::new()));  // 存放transcript的数据库(id, transcript, bool)
 
     // 创建用于线程间通信的通道
-    let (tx, rx) = mpsc::channel(100);
 
     // 启动异步任务处理监听Clients连接并写入hashmap
     // tokio::spawn启动一个新的异步任务(一个异步函数)。这个新任务会在后台异步运行，不会阻塞当前线程。
     // 使用 tokio::spawn 可以方便地并发执行多个异步任务。Tokio 运行时会自动调度这些任务，使它们高效地共享线程资源。
     let hashmap_clone = Arc::clone(&hashmap);
-    let tx_clone = tx.clone();
     tokio::spawn(async move {
-        if let Err(e) = clients_connection(hashmap_clone, tx_clone).await {
+        if let Err(e) = clients_connection(hashmap_clone).await {
             eprintln!("Error in connection handler: {}", e);
         }
     });
@@ -81,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-async fn clients_connection(hashmap: SharedMap, tx: mpsc::Sender<SharedMap>) -> Result<(), Box<dyn std::error::Error>> {
+async fn clients_connection(hashmap: SharedMap) -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
     println!("Server listening on port 8080");
 
@@ -90,15 +88,15 @@ async fn clients_connection(hashmap: SharedMap, tx: mpsc::Sender<SharedMap>) -> 
         println!("New connection: {:?}", socket.peer_addr());
 
         let hashmap_clone = Arc::clone(&hashmap);
-        let tx_clone = tx.clone();
+
         tokio::spawn(async move {
-            handle_client(socket, hashmap_clone, tx_clone).await;
+            handle_client(socket, hashmap_clone).await;
         });
     }
 }
 
-async fn handle_client(mut socket: TcpStream, hashmap: SharedMap, tx: mpsc::Sender<SharedMap>) {
-    let mut buf = vec![0; 1024];
+async fn handle_client(mut socket: TcpStream, hashmap: SharedMap) {
+    let mut buf = vec![0; 4096];
 
     loop {
         let n = match socket.read(&mut buf).await {  // 从 socket 中读取数据，数据会存储在 buf 中
@@ -106,8 +104,8 @@ async fn handle_client(mut socket: TcpStream, hashmap: SharedMap, tx: mpsc::Send
             // 将共享的 hashmap 发送给发送线程。通过 tx.send(Arc::clone(&hashmap)).await 发送。返回 return，结束当前任务。
             Ok(n) if n == 0 => {  
                 println!("Connection closed by client: {:?}", socket.peer_addr());
-                // 发送共享的hashmap给发送线程
-                let _ = tx.send(Arc::clone(&hashmap)).await;
+                
+
                 return;
             }
             Ok(n) => n,  // 当读取操作成功 (Ok) 并且读取的字节数不为 0 (n > 0) 时，返回读取的字节数 n，继续处理读取的数据。
