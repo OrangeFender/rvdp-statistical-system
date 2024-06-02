@@ -1,4 +1,5 @@
-// 相对于上一版：添加了接收prover数据的函数
+// ================================test: v6=====================================
+// 删除了SharedReceiver，我们只需要利用读写锁来完成即可
 // 锁：在 Rust 和 Tokio 中，锁的获取和释放是由范围（scope）自动管理的。锁的释放是隐式的，当锁的作用域结束时（即超出它的使用范围），锁就会自动释放。
 // 这是因为 Rust 的所有权系统和自动资源管理（RAII，Resource Acquisition Is Initialization）机制。
 use serde::{Deserialize, Serialize};
@@ -6,8 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, Mutex, RwLock};
-use tokio::task;
+use tokio::sync::{mpsc, RwLock};
 
 // Test换成transcript
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -17,7 +17,6 @@ pub struct Test {
 }
 
 type SharedMap = Arc<RwLock<HashMap<u64, Test>>>;  // 用于线程切换
-type SharedReceiver = Arc<Mutex<mpsc::Receiver<SharedMap>>>;
 const NUM_PROVER: i32 = 5;  // Prover的数量
 
 #[tokio::main]
@@ -26,7 +25,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 创建用于线程间通信的通道
     let (tx, rx) = mpsc::channel(100);
-    let shared_rx = Arc::new(Mutex::new(rx));
 
     // 启动异步任务处理监听Clients连接并写入hashmap
     // tokio::spawn启动一个新的异步任务(一个异步函数)。这个新任务会在后台异步运行，不会阻塞当前线程。
@@ -34,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hashmap_clone = Arc::clone(&hashmap);
     let tx_clone = tx.clone();
     tokio::spawn(async move {
-        if let Err(e) = handle_connections(hashmap_clone, tx_clone).await {
+        if let Err(e) = clients_connection(hashmap_clone, tx_clone).await {
             eprintln!("Error in connection handler: {}", e);
         }
     });
@@ -62,9 +60,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 连接指定地址并发送hashmap中的内容
         let hashmap_clone = Arc::clone(&hashmap);
-        let shared_rx_clone = Arc::clone(&shared_rx);
         tokio::spawn(async move {
-            if let Err(e) = connect_and_send("127.0.0.1:7878", hashmap_clone, shared_rx_clone).await {
+            if let Err(e) = connect_and_send("127.0.0.1:7878", hashmap_clone).await {
                 eprintln!("Error in sender: {}", e);
             }
         }).await.expect("Failed to execute connect_and_send");
@@ -84,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-async fn handle_connections(hashmap: SharedMap, tx: mpsc::Sender<SharedMap>) -> Result<(), Box<dyn std::error::Error>> {
+async fn clients_connection(hashmap: SharedMap, tx: mpsc::Sender<SharedMap>) -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
     println!("Server listening on port 8080");
 
@@ -137,20 +134,14 @@ async fn handle_client(mut socket: TcpStream, hashmap: SharedMap, tx: mpsc::Send
     }
 }
 
-async fn connect_and_send(addr: &str, hashmap: SharedMap, shared_rx: SharedReceiver) -> Result<(), Box<dyn std::error::Error>> {
+async fn connect_and_send(addr: &str, hashmap: SharedMap) -> Result<(), Box<dyn std::error::Error>> {
     for _ in 0..NUM_PROVER {
-        // 接收更新后的hashmap
-        let hashmap = {
-            let mut rx = shared_rx.lock().await;
-            rx.recv().await.expect("Failed to receive hashmap")
-        };
-
         // 创建连接
         let mut stream = TcpStream::connect(addr).await?;
         println!("Connected to {}", addr);
 
         // 读取hashmap内容并发送
-        let map = hashmap.read().await;  // 获得写锁
+        let map = hashmap.read().await;  // 获得读锁
         for (id, test) in map.iter() {
             let data = bcs::to_bytes(&test).expect("Failed to serialize data");
             stream.write_all(&data).await?;
