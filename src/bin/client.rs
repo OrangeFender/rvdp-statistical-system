@@ -98,14 +98,23 @@ pub async fn client(conf_str:&str,address:&str,pks:&[u8],inputs:Vec<bool> ,id:us
         }
         transcripts.push(client_types[j].get_transcript(config.num_provers, &validvec, sigs.clone()));
     }
-//向verifier发送transcripts
+// 向verifier发送transcripts
     let mut buffer = Vec::new();
-    for i in 0..config.types {
-        buffer.append(&mut bcs::to_bytes(&transcripts[i]).expect("Failed to serialize data"));
-    }
+    let bytes= bcs::to_bytes(&transcripts).expect("Failed to serialize transcripts");
+    buffer.extend_from_slice(&bytes);
     let mut stream = TcpStream::connect(socket_addresses[0]).await.expect("Failed to connect to verifier");
     stream.write_all(&buffer).await.expect("Failed to send transcripts");
 
+    // 读取对方发来的返回消息
+    let mut response = String::new();
+    stream.read_to_string(&mut response).await.expect("Failed to read response");
+
+    // 检查返回消息是否为 "OK"
+    if response.trim() == "OK" {
+        println!("Received OK from verifier");
+    } else {
+        eprintln!("Received unexpected response from verifier: {}", response);
+    }
 }
 
 
