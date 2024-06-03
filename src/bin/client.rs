@@ -91,7 +91,7 @@ pub async fn client(conf_str:&str,address:&str,pks:&[u8],inputs:Vec<bool> ,id:u6
                 let signature = sigs_prover_type_guard[i][j].as_ref().unwrap();
                 let ret=client_types[j].vrfy_sig(&pk, signature);
                 if ret {
-                    sigs.push(signature.clone());
+                    sigs.push((signature.clone(),i));
                     validvec[i] = true;
                 }
             }

@@ -19,7 +19,7 @@ use tokio::task;
 use serde::{Serialize, Deserialize};
 use bcs::{to_bytes, from_bytes};
 
-type SharedMap = Arc<RwLock<HashMap<u64, (Scalar, Scalar)>>>;
+type SharedMap = Arc<RwLock<HashMap<u64, Vec<(Scalar, Scalar)>>>>;
 type SharedProvers = Arc<Vec<Prover>>;
 
 const N_B: usize = 10;
@@ -27,7 +27,7 @@ const NUM_CLIENTS: usize = 15;
 // NUM_PROVERS >= 2*THRESHOLD + 1
 const NUM_PROVERS: usize = 7;
 const THRESHOLD: usize = 3;
-
+const TYPES: usize = 3;
 #[tokio::main]
 async fn main() {
     // 共享资源，用于存放<share, pi>
@@ -56,8 +56,7 @@ async fn prover(share_hashmap: SharedMap) {
     let sig_keys = generate_ed_sig_keys(NUM_PROVERS);
 
     // 生成服务器实例
-    // let mut provers_vector: Vec<Prover> = Vec::new();  // 创建provers的实例
-    let provers = Arc::new(provers_vector);  // 将 provers_vector 放入 Arc 中
+    let mut provers_vector: Vec<Prover> = Vec::new();  // 创建provers的实例
     for i in 0..NUM_PROVERS {
         provers_vector.push(Prover::new(i, &pp, sig_keys[i].private_key.clone(), sig_keys[i].public_key.clone()))
     }
