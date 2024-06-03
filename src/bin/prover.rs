@@ -18,7 +18,8 @@ use tokio::sync::RwLock;
 use tokio::task;
 use serde::{Serialize, Deserialize};
 use bcs::{to_bytes, from_bytes};
-
+use std::fs::File;
+use std::io::Read;
 type SharedMap = Arc<RwLock<HashMap<u64, Vec<(Scalar, Scalar)>>>>;
 type SharedProvers = Arc<Vec<Prover>>;
 
@@ -33,7 +34,22 @@ async fn main() {
     // 共享资源，用于存放<share, pi>
     let share_hashmap: SharedMap = Arc::new(RwLock::new(HashMap::new()));
 
-    prover(share_hashmap).await;
+    let mut key_file = File::open(format!("sk")).unwrap();
+    let mut bytes = Vec::new();
+    key_file.read_to_end(&mut bytes).unwrap();
+    let key:Ed25519PrivateKey = from_bytes(&bytes).unwrap();
+    let mut boolvecvec_file = File::open(format!("boolvecvec")).unwrap();
+    let mut boolvecvec_bytes = Vec::new();
+    boolvecvec_file.read_to_end(&mut boolvecvec_bytes).unwrap();
+    let boolvecvec: Vec<Vec<bool>> = from_bytes(&boolvecvec_bytes).unwrap();
+
+    // 读取并反序列化Scalarvecvec
+    let mut Scalarvecvec_file = File::open(format!("Scalarvecvec")).unwrap();
+    let mut Scalarvecvec_bytes = Vec::new();
+    Scalarvecvec_file.read_to_end(&mut Scalarvecvec_bytes).unwrap();
+    let Scalarvecvec: Vec<Vec<Scalar>> = from_bytes(&Scalarvecvec_bytes).unwrap();
+
+    prover(share_hashmap,key,boolvecvec,Scalarvecvec).await;
 
     // // 启动两个新的异步任务，它会调用各自的函数，并传递共享的share_hashmap克隆副本作为参数。tokio::spawn会将这个任务放入Tokio的任务调度器中进行调度和执行。
     // let clients_handle = tokio::spawn(clients_connection(share_hashmap.clone()));
@@ -45,20 +61,19 @@ async fn main() {
 }
 
 // 实例化多个prover是为了模拟不同的类型疾病；开NUM_PROVERS个程序，一个程序模拟一个prover
-async fn prover(share_hashmap: SharedMap) {
+async fn prover(share_hashmap: SharedMap,key:Ed25519PrivateKey, boolvecvec:Vec<Vec<bool>>, Scalarvecvec:Vec<Vec<Scalar>>) {
     // 生成公共参数
     let pp = PublicParameters::new(
         N_B, NUM_PROVERS, THRESHOLD, b"seed"
     );
 
-    // 生成签名公私钥
-    // 公钥如何分发？
+    //将文件“sk”读取为字节数组，并用from_bytes函数将其反序列化为Ed25519PrivateKey类型
     let sig_keys = generate_ed_sig_keys(NUM_PROVERS);
 
     // 生成服务器实例
     let mut provers_vector: Vec<Prover> = Vec::new();  // 创建provers的实例
     for i in 0..NUM_PROVERS {
-        provers_vector.push(Prover::new(i, &pp, sig_keys[i].private_key.clone(), sig_keys[i].public_key.clone()))
+        provers_vector.push(Prover::new(i, boolvecvec[i],Scalarvecvec[i],&pp, key.clone()))
     }
 
     // 启动两个新的异步任务，它会调用各自的函数，并传递共享的share_hashmap克隆副本作为参数。tokio::spawn会将这个任务放入Tokio的任务调度器中进行调度和执行。
