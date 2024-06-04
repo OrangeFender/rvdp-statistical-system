@@ -5,6 +5,7 @@ use dp::public_parameters::PublicParameters;
 use dp::prover::Prover;
 use dp::msg_structs::ComsAndShare;
 use dp::sig::*;
+use dp::hash_xor::*;
 use blstrs::{G1Projective, Scalar};
 use std::net::SocketAddr;
 use aptos_crypto::ed25519::{Ed25519PrivateKey, Ed25519PublicKey, Ed25519Signature};
@@ -154,28 +155,53 @@ async fn verifier_connection(share_hashmap: SharedMap,provervec: Vec<Prover>,pp:
     tokio::spawn(async move {
         loop {
             let (socket, _) = listener.accept().await.unwrap();
-            handle_verifier(socket, hashmap_clone.clone(),&provervec,&pp).await;
+            handle_verifier(socket, hashmap_clone.clone(),provervec.clone(),&pp).await;
         }
     });
     
 }
 
-async fn handle_verifier(mut socket: TcpStream, share_hashmap: SharedMap,provervec: &Vec<Prover>,pp:&PublicParameters) {
+async fn handle_verifier(mut socket: TcpStream, share_hashmap: SharedMap,mut provervec: Vec<Prover>,pp:&PublicParameters) {
     let mut buffer = Vec::new();
     socket.read_to_end(&mut buffer).await.unwrap();
     let valid_ids: Vec<u64> = from_bytes(&buffer).unwrap();
 
-    let mut results = Vec::new();
+    let hash= hash_T_to_bit_array(valid_ids.clone(), pp.get_n_b());
+    for i in 0..provervec.len() {
+        provervec[i].x_or(&pp, &hash);
+    }
+
+    let mut results: Vec<Vec<(Scalar,Scalar)>> = Vec::new();
 
     let hashmap = share_hashmap.read().await;
 
     // 这里获取了value之后，应该还需要发送其他的数据
     for id in valid_ids {
         if let Some(value) = hashmap.get(&id) {
-            results.push((id, value.clone()));
+            results.push(value.clone());
+        }
+    }
+    let results_type_id = transpose(&results);
+
+    let mut output:Vec<(Scalar,Scalar)> =Vec::new();
+
+    for i in 0..TYPES {
+        output.push(provervec[i].calc_output_with_share(pp, results_type_id[i].clone()));
+    }
+
+
+    let response = to_bytes(&output).unwrap();
+    socket.write_all(&response).await.unwrap();
+}
+
+fn transpose<T: Clone>(v: &Vec<Vec<T>>) -> Vec<Vec<T>> {
+    let mut result = vec![vec![v[0][0].clone(); v.len()]; v[0].len()];
+
+    for i in 0..v.len() {
+        for j in 0..v[i].len() {
+            result[j][i] = v[i][j].clone();
         }
     }
 
-    let response = to_bytes(&results).unwrap();
-    socket.write_all(&response).await.unwrap();
+    result
 }
