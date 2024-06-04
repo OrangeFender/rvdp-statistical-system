@@ -4,11 +4,9 @@ extern crate rvdp_statistical_system as dpsys;
 use dp::public_parameters::PublicParameters;
 use dp::prover::Prover;
 use dp::msg_structs::ComsAndShare;
-use dp::sig::*;
 use dp::hash_xor::*;
-use blstrs::{G1Projective, Scalar};
-use std::net::SocketAddr;
-use aptos_crypto::ed25519::{Ed25519PrivateKey, Ed25519PublicKey, Ed25519Signature};
+use blstrs:: Scalar;
+use aptos_crypto::ed25519::{Ed25519PrivateKey, Ed25519Signature};
 
 use std::collections::HashMap;
 use tokio::io::AsyncReadExt;
@@ -16,23 +14,19 @@ use tokio::io::AsyncWriteExt;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
-use tokio::task;
-use serde::{Serialize, Deserialize};
 use bcs::{to_bytes, from_bytes};
 use std::fs::File;
 use std::io::Read;
 type SharedMap = Arc<RwLock<HashMap<u64, Vec<(Scalar, Scalar)>>>>;
-type SharedProvers = Arc<Vec<Prover>>;
 
 use std::env;
 
 
 const N_B: usize = 10;
-const NUM_CLIENTS: usize = 15;
 // NUM_PROVERS >= 2*THRESHOLD + 1
 const NUM_PROVERS: usize = 7;
 const THRESHOLD: usize = 3;
-const TYPES: usize = 3;
+const TYPES: usize = 15;
 #[tokio::main]
 async fn main() {
     

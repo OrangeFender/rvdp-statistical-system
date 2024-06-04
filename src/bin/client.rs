@@ -10,49 +10,19 @@ use aptos_crypto::ed25519::{Ed25519PrivateKey, Ed25519PublicKey, Ed25519Signatur
 
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
+use std::fs::File;
+use std::io::Read;
 
 
 
-pub async fn client(conf_str:&str,address:&str,pks:&[u8],inputs:Vec<bool> ,id:u64){
-    let mut pp:PublicParameters;
-    let types:usize;
-    //从json中生成公共参数
-    let mut config;
-    match serde_json::from_str::<Config>(conf_str) {
-        Ok(c) => {
-            pp = PublicParameters::new(
-                c.n_b, c.num_provers, c.threshold, c.seed.as_bytes()
-                );
-            types = c.types;
-            config = c;
-        },
-        Err(e) => {
-            println!("Error: {}", e);
-            return;
-        }
-    }
+pub async fn client(inputs:Vec<bool> ,id:u64){
+    
 
-    //检查input长度
-    if inputs.len() != types {
-        println!("Error: input length does not match the number of types");
-        return;
-    }
 
-    let v: serde_json::Value = serde_json::from_str(address).unwrap();
-    let mut socket_addresses = Vec::new();
-
-    if let Some(ip_addresses) = v["ip_addresses"].as_array() {
-        for ip in ip_addresses {
-            if let Some(ip_str) = ip.as_str() {
-                if let Ok(socket_addr) = ip_str.parse::<SocketAddr>() {
-                    socket_addresses.push(socket_addr);
-                }
-            }
-        }
-    }
-    //反序列化公钥
-    let mut sig_keys: Vec<Ed25519PublicKey> = bcs::from_bytes(pks).expect("Failed to deserialize public keys");
-
+    let mut key_file = File::open(format!("pks")).unwrap();
+    let mut bytes = Vec::new();
+    key_file.read_to_end(&mut bytes).unwrap();
+    let key:Ed25519PublicKey = bcs::from_bytes(&bytes).unwrap();
 
     //创建Client实例
     let mut client_types:Vec<Client> = Vec::new();
