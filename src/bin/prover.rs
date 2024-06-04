@@ -93,13 +93,13 @@ async fn prover(share_hashmap: SharedMap,key:Ed25519PrivateKey, boolvecvec:Vec<V
 
     // 启动两个新的异步任务，它会调用各自的函数，并传递共享的share_hashmap克隆副本作为参数。tokio::spawn会将这个任务放入Tokio的任务调度器中进行调度和执行。
     tokio::spawn(clients_connection(share_hashmap.clone(),provers_vector.clone(),pp.clone()));
-    tokio::spawn(verifier_connection(share_hashmap.clone(),provers_vector.clone()));
+    tokio::spawn(verifier_connection(share_hashmap.clone(),provers_vector.clone(),pp.clone()));
 
 }
 
 // 监听clients连接
 async fn clients_connection(share_hashmap: SharedMap,provervec: Vec<Prover>,pp:PublicParameters) {
-    let addr = format!("127.0.0.1:{}", 8000 + i);  // 这里改为提前定好的socket
+    let addr = format!("127.0.0.1:{}", 8000);  // 这里改为提前定好的socket
     let listener = TcpListener::bind(&addr).await.unwrap();  // 每个prover监听不同的socket
     println!("Listening for clients on {}", addr);
     let hashmap_clone = share_hashmap.clone();
@@ -107,27 +107,27 @@ async fn clients_connection(share_hashmap: SharedMap,provervec: Vec<Prover>,pp:P
     tokio::spawn(async move {
         loop {
             let (socket, _) = listener.accept().await.unwrap();
-            handle_client(socket, hashmap_clone.clone(),provervec[0].clone(),pp).await;
+            handle_client(socket, hashmap_clone.clone(),provervec[0].clone(),&pp).await;
         }
     });
 }
 
 // 处理client连接
-async fn handle_client(mut socket: TcpStream, share_hashmap: SharedMap,prover: Prover,pp:PublicParameters) {
+async fn handle_client(mut socket: TcpStream, share_hashmap: SharedMap,prover: Prover,pp:&PublicParameters) {
     let mut buffer = Vec::new();
     socket.read_to_end(&mut buffer).await.unwrap();
     let com_and_share_vec: Vec<ComsAndShare> = from_bytes(&buffer).unwrap();  // com_and_share为接收到的ComsAndShare类型数据
     let id= com_and_share_vec[0].id;
     // Assuming verify_msg_and_sig function is defined and returns a boolean or some result
     // 做verify_msg_and_sig验证+签名
-    let sharevec:Vec<(Scalar,Scalar)> = Vec::new();
-    let sigs:Vec<Option<Ed25519Signature>> = Vec::new();
+    let mut sharevec:Vec<(Scalar,Scalar)> = Vec::new();
+    let mut sigs:Vec<Ed25519Signature> = Vec::new();
     for com_and_share in com_and_share_vec {
         let verification_result = prover.verify_msg_and_sig(&com_and_share,&pp);
         match verification_result {
             Some(signature) => {
                 sharevec.push((com_and_share.share, com_and_share.pi));
-                sigs.push(Some(signature));
+                sigs.push(signature);
             },
             None => {
                 println!("Verification failed");
@@ -140,28 +140,27 @@ async fn handle_client(mut socket: TcpStream, share_hashmap: SharedMap,prover: P
     hashmap.insert(id, sharevec);  // 将sharevec插入hashmap);
 
     // 将签名返回clients
-    let response = to_bytes(&verification_result).unwrap();
+    let response = to_bytes(&sigs).unwrap();
     socket.write_all(&response).await.unwrap();
 }
 
 // 监听verifier连接
-async fn verifier_connection(share_hashmap: SharedMap,provervec: Vec<Prover>) {
-    for i in 0..NUM_PROVERS {
-        let addr = format!("127.0.0.1:{}", 9000 + i);  // 这里改为提前定好的socket
-        let listener = TcpListener::bind(&addr).await.unwrap();
-        println!("Listening for verifiers on {}", addr);
+async fn verifier_connection(share_hashmap: SharedMap,provervec: Vec<Prover>,pp:PublicParameters) {
+    let addr = format!("127.0.0.1:{}", 9000);  // 这里改为提前定好的socket
+    let listener = TcpListener::bind(&addr).await.unwrap();
+    println!("Listening for verifiers on {}", addr);
 
-        let hashmap_clone = share_hashmap.clone();
-        tokio::spawn(async move {
-            loop {
-                let (socket, _) = listener.accept().await.unwrap();
-                handle_verifier(socket, hashmap_clone.clone()).await;
-            }
-        });
-    }
+    let hashmap_clone = share_hashmap.clone();
+    tokio::spawn(async move {
+        loop {
+            let (socket, _) = listener.accept().await.unwrap();
+            handle_verifier(socket, hashmap_clone.clone(),&provervec,&pp).await;
+        }
+    });
+    
 }
 
-async fn handle_verifier(mut socket: TcpStream, share_hashmap: SharedMap,provervec: Vec<Prover>) {
+async fn handle_verifier(mut socket: TcpStream, share_hashmap: SharedMap,provervec: &Vec<Prover>,pp:&PublicParameters) {
     let mut buffer = Vec::new();
     socket.read_to_end(&mut buffer).await.unwrap();
     let valid_ids: Vec<u64> = from_bytes(&buffer).unwrap();
