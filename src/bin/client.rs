@@ -13,28 +13,30 @@ use tokio::sync::{mpsc, RwLock};
 use std::fs::File;
 use std::io::Read;
 
+use std::env;
 
+const N_B: usize = 10;
+// NUM_PROVERS >= 2*THRESHOLD + 1
+const NUM_PROVERS: usize = 7;
+const THRESHOLD: usize = 3;
+const TYPES: usize = 3;
 
-pub async fn client(inputs:Vec<bool> ,id:u64){
-    
+const PROVER_ADDRESSES: [&str; 7] = [
+    "127.0.0.1:8000",
+    "127.0.0.1:8001",
+    "127.0.0.1:8002",
+    "127.0.0.1:8003",
+    "127.0.0.1:8004",
+    "127.0.0.1:8005",
+    "127.0.0.1:8006",
+];
 
+const VERIFIER_ADDRESS: &str = "127.0.0.1:10000";
 
-    let mut key_file = File::open(format!("pks")).unwrap();
-    let mut bytes = Vec::new();
-    key_file.read_to_end(&mut bytes).unwrap();
-    let key:Ed25519PublicKey = bcs::from_bytes(&bytes).unwrap();
-
-    //创建Client实例
-    let mut client_types:Vec<Client> = Vec::new();
-    for i in 0..types {
-        client_types.push(Client::new(id, inputs[i], &pp, ));
-    }
-
-    let sigs_prover_type: Arc<RwLock<Vec<Vec<Option<Ed25519Signature>>>>> = Arc::new(RwLock::new(vec![vec![None; config.num_provers]; config.types]));
-
+pub async fn client(client_types:Vec<Client>,key:Vec<Ed25519PublicKey>,sigs_prover_type:Arc<RwLock<Vec<Vec<Option<Ed25519Signature>>>>>,pp:PublicParameters){
     //发送commitments
-    for i in 0..socket_addresses.len() {
-        let addr = socket_addresses[i];
+    for i in 0..NUM_PROVERS {
+        let addr: &str = PROVER_ADDRESSES[i];
         let msg_vec: Vec<ComsAndShare> = client_types.iter().map(|c| c.create_prover_msg(&pp, i)).collect();
         let data = bcs::to_bytes(&msg_vec).expect("Failed to serialize data");
     
@@ -44,7 +46,7 @@ pub async fn client(inputs:Vec<bool> ,id:u64){
         tokio::spawn(async move {
             // Lock the Mutex and get the guard
             let mut sigs_prover_type_guard = sigs_prover_type_clone.write().await;
-            if let Err(e) = connect_and_communicate(addr, data, &mut sigs_prover_type_guard[i],config.types).await {
+            if let Err(e) = connect_and_communicate(addr, data, &mut sigs_prover_type_guard[i],TYPES).await {
                 eprintln!("Failed to connect and communicate: {}", e);
             }
         });
@@ -52,11 +54,11 @@ pub async fn client(inputs:Vec<bool> ,id:u64){
     let sigs_prover_type_guard = sigs_prover_type.read().await;
     
     let mut transcripts=Vec::new();
-    for j in 0..config.types {
-        let mut validvec: Vec<bool> = vec![false; config.num_provers]; 
+    for j in 0..TYPES {
+        let mut validvec: Vec<bool> = vec![false; NUM_PROVERS]; 
         let mut sigs = Vec::new();    
-        for i in 0..config.num_provers {
-            let pk= sig_keys[i].clone();
+        for i in 0..NUM_PROVERS {
+            let pk= key[i].clone();
             if sigs_prover_type_guard[i][j].is_some() {
                 let signature = sigs_prover_type_guard[i][j].as_ref().unwrap();
                 let ret=client_types[j].vrfy_sig(&pk, signature);
@@ -66,13 +68,13 @@ pub async fn client(inputs:Vec<bool> ,id:u64){
                 }
             }
         }
-        transcripts.push(client_types[j].get_transcript(config.num_provers, &validvec, sigs.clone()));
+        transcripts.push(client_types[j].get_transcript(NUM_PROVERS, &validvec, sigs.clone()));
     }
 // 向verifier发送transcripts
     let mut buffer = Vec::new();
     let bytes= bcs::to_bytes(&transcripts.clone()).expect("Failed to serialize transcripts");
     buffer.extend_from_slice(&bytes);
-    let mut stream = TcpStream::connect(socket_addresses[0]).await.expect("Failed to connect to verifier");
+    let mut stream = TcpStream::connect(VERIFIER_ADDRESS).await.expect("Failed to connect to verifier");
     stream.write_all(&buffer).await.expect("Failed to send transcripts");
 
     // 读取对方发来的返回消息
@@ -92,7 +94,7 @@ use tokio::net::TcpStream;
 use tokio::io::{AsyncWriteExt, AsyncReadExt};
 use tokio::time::{Duration, timeout};
 
-async fn connect_and_communicate(addr: SocketAddr, data: Vec<u8>, sigs: &mut Vec<Option<Ed25519Signature>>,type_num:usize) -> Result<(), Box<dyn std::error::Error>> {
+async fn connect_and_communicate(addr: &str, data: Vec<u8>, sigs: &mut Vec<Option<Ed25519Signature>>,type_num:usize) -> Result<(), Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect(addr).await?;
 
     // 发送数据
@@ -123,31 +125,53 @@ async fn connect_and_communicate(addr: SocketAddr, data: Vec<u8>, sigs: &mut Vec
 }
 
 fn main(){
-    let conf_str=r#"
-    {
-        “types":15,
-        "n_b": 10,
-        "num_provers": 10,
-        "threshold": 4,
-        "seed": "seed1001",
+    let args: Vec<String> = env::args().collect();
+    if args.len() != TYPES + 2 {
+        eprintln!("Error: The number of arguments must be equal to TYPES + 1");
+        return;
     }
-"#;
 
-    let address = r#"
-{
-    "ip_addresses": [
-        "192.168.0.1:1234",
-        "192.168.0.2:1234",
-        "10.0.0.1:1234",
-        "172.16.0.1:1234"
-    ]
-}
-"#;
+    let mut inputs = Vec::new();
+    for i in 1..=TYPES {
+        match args[i].as_str() {
+            "0" => inputs.push(false),
+            "1" => inputs.push(true),
+            _ => {
+                eprintln!("Error: Invalid argument. Only 0 (for false) and 1 (for true) are allowed");
+                return;
+            }
+        }
+    }
 
-    let pks = "substutute the public keys here".as_bytes();
+    let num: u64 = match args[TYPES + 1].parse() {
+        Ok(n) => n,
+        Err(_) => {
+            eprintln!("Error: Invalid argument. The last argument must be a u64 number");
+            return;
+        }
+    };
 
-    let inputs = vec![true, false, true, false, true, false, true, false, true, false, true, false, true, false, true];
-    client(&conf_str,&address,pks,inputs, 1);
+
+    let pp = PublicParameters::new(
+        N_B, NUM_PROVERS, THRESHOLD, b"seed"
+    );
+
+    // 读取公钥文件
+    let mut key_file = File::open(format!("pks")).unwrap();
+    let mut bytes = Vec::new();
+    key_file.read_to_end(&mut bytes).unwrap();
+    let key:Vec<Ed25519PublicKey> = bcs::from_bytes(&bytes).unwrap();
+
+    //创建Client实例
+    let mut client_types:Vec<Client> = Vec::new();
+    for i in 0..TYPES {
+        client_types.push(Client::new(num, inputs[i], &pp, ));
+    }
+
+    let sigs_prover_type: Arc<RwLock<Vec<Vec<Option<Ed25519Signature>>>>> = Arc::new(RwLock::new(vec![vec![None; NUM_PROVERS]; TYPES]));
+    println!("Client {} started", num);
+
+    client(client_types,key,sigs_prover_type,pp);
 
 
 }

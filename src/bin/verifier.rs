@@ -33,13 +33,13 @@ const THRESHOLD: usize = 3;
 const TYPES: usize = 3;
 
 const PROVER_ADDRESSES: [&str; 7] = [
-    "127.0.0.1:8001",
-    "127.0.0.1:8002",
-    "127.0.0.1:8003",
-    "127.0.0.1:8004",
-    "127.0.0.1:8005",
-    "127.0.0.1:8006",
-    "127.0.0.1:8007",
+    "127.0.0.1:9000",
+    "127.0.0.1:9001",
+    "127.0.0.1:9002",
+    "127.0.0.1:9003",
+    "127.0.0.1:9004",
+    "127.0.0.1:9005",
+    "127.0.0.1:9006",
 ];
 
 #[tokio::main]
@@ -154,8 +154,8 @@ async fn main()  {
 }
 
 async fn clients_connection(hashmap: SharedMap,pp:PublicParameters,pks:Vec<Ed25519PublicKey>) -> Result<(), Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
-    println!("Server listening on port 8080");
+    let listener = TcpListener::bind("127.0.0.1:10000").await?;
+    println!("Server listening on port 10000");
     
     loop {
         let pks=pks.clone();

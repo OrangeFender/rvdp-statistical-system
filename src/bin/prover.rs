@@ -26,7 +26,7 @@ const N_B: usize = 10;
 // NUM_PROVERS >= 2*THRESHOLD + 1
 const NUM_PROVERS: usize = 7;
 const THRESHOLD: usize = 3;
-const TYPES: usize = 15;
+const TYPES: usize = 3;
 #[tokio::main]
 async fn main() {
     
@@ -46,17 +46,17 @@ async fn main() {
     // 共享资源，用于存放<share, pi>
     let share_hashmap: SharedMap = Arc::new(RwLock::new(HashMap::new()));
 
-    let mut key_file = File::open(format!("sk")).unwrap();
+    let mut key_file = File::open(format!("sk{}",ind)).unwrap();
     let mut bytes = Vec::new();
     key_file.read_to_end(&mut bytes).unwrap();
     let key:Ed25519PrivateKey = from_bytes(&bytes).unwrap();
-    let mut boolvecvec_file = File::open(format!("boolvecvec")).unwrap();
+    let mut boolvecvec_file = File::open(format!("boolvecvec{}",ind)).unwrap();
     let mut boolvecvec_bytes = Vec::new();
     boolvecvec_file.read_to_end(&mut boolvecvec_bytes).unwrap();
     let boolvecvec: Vec<Vec<bool>> = from_bytes(&boolvecvec_bytes).unwrap();
 
     // 读取并反序列化Scalarvecvec
-    let mut Scalarvecvec_file = File::open(format!("Scalarvecvec")).unwrap();
+    let mut Scalarvecvec_file = File::open(format!("Scalarvecvec{}",ind)).unwrap();
     let mut Scalarvecvec_bytes = Vec::new();
     Scalarvecvec_file.read_to_end(&mut Scalarvecvec_bytes).unwrap();
     let Scalarvecvec: Vec<Vec<Scalar>> = from_bytes(&Scalarvecvec_bytes).unwrap();
@@ -82,19 +82,19 @@ async fn prover(share_hashmap: SharedMap,key:Ed25519PrivateKey, boolvecvec:Vec<V
 
     // 生成服务器实例
     let mut provers_vector: Vec<Prover> = Vec::new();  // 创建provers的实例
-    for i in 0..NUM_PROVERS {
+    for i in 0..TYPES {
         provers_vector.push(Prover::new(ind, boolvecvec[i].clone(),Scalarvecvec[i].clone(),&pp, key.clone()))
     }
 
     // 启动两个新的异步任务，它会调用各自的函数，并传递共享的share_hashmap克隆副本作为参数。tokio::spawn会将这个任务放入Tokio的任务调度器中进行调度和执行。
-    tokio::spawn(clients_connection(share_hashmap.clone(),provers_vector.clone(),pp.clone()));
-    tokio::spawn(verifier_connection(share_hashmap.clone(),provers_vector.clone(),pp.clone()));
+    tokio::spawn(clients_connection(share_hashmap.clone(),provers_vector.clone(),pp.clone(),ind));
+    tokio::spawn(verifier_connection(share_hashmap.clone(),provers_vector.clone(),pp.clone(),ind));
 
 }
 
 // 监听clients连接
-async fn clients_connection(share_hashmap: SharedMap,provervec: Vec<Prover>,pp:PublicParameters) {
-    let addr = format!("127.0.0.1:{}", 8000);  // 这里改为提前定好的socket
+async fn clients_connection(share_hashmap: SharedMap,provervec: Vec<Prover>,pp:PublicParameters,ind: usize) {
+    let addr = format!("127.0.0.1:{}", 8000+ind);  // 这里改为提前定好的socket
     let listener = TcpListener::bind(&addr).await.unwrap();  // 每个prover监听不同的socket
     println!("Listening for clients on {}", addr);
     let hashmap_clone = share_hashmap.clone();
@@ -109,6 +109,7 @@ async fn clients_connection(share_hashmap: SharedMap,provervec: Vec<Prover>,pp:P
 
 // 处理client连接
 async fn handle_client(mut socket: TcpStream, share_hashmap: SharedMap,prover: Prover,pp:&PublicParameters) {
+    println!("Handling client");
     let mut buffer = Vec::new();
     socket.read_to_end(&mut buffer).await.unwrap();
     let com_and_share_vec: Vec<ComsAndShare> = from_bytes(&buffer).unwrap();  // com_and_share为接收到的ComsAndShare类型数据
@@ -123,6 +124,7 @@ async fn handle_client(mut socket: TcpStream, share_hashmap: SharedMap,prover: P
             Some(signature) => {
                 sharevec.push((com_and_share.share, com_and_share.pi));
                 sigs.push(signature);
+                //println!("Verification succeeded");
             },
             None => {
                 println!("Verification failed");
@@ -140,8 +142,8 @@ async fn handle_client(mut socket: TcpStream, share_hashmap: SharedMap,prover: P
 }
 
 // 监听verifier连接
-async fn verifier_connection(share_hashmap: SharedMap,provervec: Vec<Prover>,pp:PublicParameters) {
-    let addr = format!("127.0.0.1:{}", 9000);  // 这里改为提前定好的socket
+async fn verifier_connection(share_hashmap: SharedMap,provervec: Vec<Prover>,pp:PublicParameters,ind: usize) {
+    let addr = format!("127.0.0.1:{}",9000+ ind);  // 这里改为提前定好的socket
     let listener = TcpListener::bind(&addr).await.unwrap();
     println!("Listening for verifiers on {}", addr);
 
